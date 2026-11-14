@@ -75,7 +75,7 @@ textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-rad
     <button class="btn" id="pkDel">Vider l’emplacement</button>
     <button class="btn" id="pkClose">Fermer</button>
   </div>
-  <div id="msg">Tape un nom et lance la recherche : toutes les cartes de ce Pokémon s’affichent, classées par extension.</div>
+  <div id="msg">Tape un nom et lance la recherche : toutes les cartes de ce Pokémon s’affichent, du plus récent au plus ancien.</div>
   <div id="results"></div>
   <div class="acts"><button class="btn" id="more" style="display:none">Voir plus de cartes</button></div>
 </dialog>
@@ -122,7 +122,7 @@ function askR(url){return ask(url,25000).catch(function(){return ask(url,25000)}
 function getSets(l){if(sets[l])return Promise.resolve(sets[l]);
 return askR(API+l+"/sets").then(function(a){var n={},o={};a.forEach(function(x,i){n[x.id]=x.name;o[x.id]=i});sets[l]={n:n,o:o};return sets[l]}).catch(function(){return{n:{},o:{}}})}
 function more(){var h="";
-list.slice(shown,shown+48).forEach(function(c){h+='<div class="card" tabindex="0" role="button" data-id="'+esc(c.id)+'" data-n="'+esc(c.n)+'" data-s="'+esc(c.s)+'" data-num="'+esc(c.num)+'" data-img="'+esc(c.img)+'"><img loading="lazy" alt="'+esc(c.n)+'" src="'+esc(c.img)+'"><b>'+esc(c.n)+'</b><span>'+esc(c.s)+"<br>n° "+esc(c.num)+"</span></div>"});
+list.slice(shown,shown+48).forEach(function(c){h+='<div class="card" tabindex="0" role="button" data-id="'+esc(c.id)+'" data-n="'+esc(c.n)+'" data-s="'+esc(c.s)+'" data-num="'+esc(c.num)+'" data-img="'+esc(c.img)+'"><img loading="lazy" alt="'+esc(c.n)+'" src="'+esc(c.img)+'"><b>'+esc(c.n)+'</b><span>'+esc(c.s)+(c.y?" ("+c.y+")":"")+"<br>n° "+esc(c.num)+"</span></div>"});
 shown=Math.min(shown+48,list.length);$("results").insertAdjacentHTML("beforeend",h);
 $("msg").textContent=shown+" carte"+(shown>1?"s":"")+" affichée"+(shown>1?"s":"")+" sur "+list.length+" pour « "+term+" ». Clique sur une carte pour la placer.";
 $("more").style.display=shown<list.length?"":"none"}
@@ -131,14 +131,26 @@ if(e&&e.name==="AbortError")m="Le service des cartes met trop de temps à répon
 else if(e&&/^HTTP/.test(e.message))m="Le service des cartes a renvoyé une erreur ("+e.message+"). Réessaie dans quelques minutes.";
 else m="Connexion impossible au service des cartes. Si tu as ouvert ce fichier depuis l’aperçu de l’application Claude, ouvre-le plutôt dans Chrome ou Safari.";
 $("msg").textContent=m;if($("results").children.length)$("more").style.display=""}
+var dates={};try{dates=JSON.parse(localStorage.getItem("tcgdex-dates-v1")||"{}")}catch(e){}
+function enrich(l,items){var ids=[],seen={};
+items.forEach(function(c){var k=l+"/"+c.sid;if(!(k in dates)&&!seen[k]){seen[k]=1;ids.push(c.sid)}});
+return new Promise(function(res){if(!ids.length)return res();var i=0,done=0;
+function next(){if(i>=ids.length)return;var sid=ids[i++];
+ask(API+l+"/sets/"+encodeURIComponent(sid),15000).then(function(d){dates[l+"/"+sid]=d.releaseDate||""},function(){}).then(function(){done++;
+$("msg").textContent="Tri du plus récent au plus ancien… "+done+"/"+ids.length;
+if(done===ids.length){try{localStorage.setItem("tcgdex-dates-v1",JSON.stringify(dates))}catch(e){}res()}else next()})}
+for(var w=0;w<8;w++)next()})}
 function search(){term=$("q").value.trim();if(!term)return;var l=$("lg").value;
 $("results").innerHTML="";$("more").style.display="none";$("msg").textContent="Recherche en cours…";
 Promise.all([askR(API+l+"/cards?name="+encodeURIComponent(term)),getSets(l)]).then(function(r){var S=r[1];
 list=r[0].filter(function(c){return c.image}).map(function(c){var sid=c.id.slice(0,c.id.length-String(c.localId).length-1);
-return{id:c.id,n:c.name,s:S.n[sid]||sid,num:String(c.localId),img:c.image+"/low.webp",o:S.o[sid]===undefined?9999:S.o[sid]}});
-list.sort(function(a,b){return b.o-a.o});shown=0;
+return{id:c.id,n:c.name,sid:sid,s:S.n[sid]||sid,num:String(c.localId),img:c.image+"/low.webp",o:S.o[sid]===undefined?-1:S.o[sid]}});
 if(!list.length){$("msg").textContent="Aucune carte trouvée pour « "+term+" ». Vérifie l’orthographe ou change la langue des cartes.";return}
-more()}).catch(fail)}
+return enrich(l,list).then(function(){
+list.forEach(function(c){c.d=dates[l+"/"+c.sid]||"";c.y=c.d.slice(0,4)});
+list.sort(function(a,b){if(a.d!==b.d)return a.d<b.d?1:-1;if(a.o!==b.o)return b.o-a.o;
+var x=parseInt(a.num,10),y=parseInt(b.num,10);if(!isNaN(x)&&!isNaN(y)&&x!==y)return x-y;return a.num<b.num?-1:1});
+shown=0;more()})}).catch(fail)}
 $("qB").onclick=function(){search()};
 $("q").onkeydown=function(e){if(e.key==="Enter")search()};
 $("more").onclick=more;
