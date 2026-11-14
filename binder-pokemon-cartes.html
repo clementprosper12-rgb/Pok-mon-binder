@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mon binder Pokémon</title>
+<style>
+:root{--bg:#eef2f1;--cover:#12373f;--cover2:#1b4d58;--sleeve:#fbfdfd;--ink:#14272b;--mute:#5d7378;--line:#b9c9cc;--want:#e0a21b;--own:#2f9e6e;--acc:#e4572e;--surf:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1719;--cover:#0a2228;--cover2:#143842;--sleeve:#1a2b2f;--ink:#e6f0f1;--mute:#93aeb2;--line:#35505a;--surf:#14242a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.4}
+button,input,select,textarea{font:inherit;color:inherit}
+header{padding:14px 16px 8px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+#title{font-size:1.5rem;font-weight:800;background:transparent;border:0;border-bottom:2px dashed var(--line);padding:2px 0;width:min(100%,18ch)}
+.stats{color:var(--mute);font-size:.9rem}
+.bar{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 10px;align-items:center}
+.btn{background:var(--surf);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer}
+.btn:hover{border-color:var(--acc)}.btn:disabled{opacity:.4;cursor:default}
+.btn.main{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+input[type=number],input[type=search],input[type=text]{background:var(--surf);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.bar input[type=number]{width:5.5em}
+.binder{margin:8px 12px 24px;padding:14px;border-radius:16px;background:linear-gradient(135deg,var(--cover2),var(--cover));display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px}
+.page{background:var(--sleeve);border-radius:10px;padding:10px}
+.page h2{margin:0 0 8px;font-size:.85rem;font-weight:600;color:var(--mute)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.cell{position:relative;aspect-ratio:63/88;border:2px dashed var(--line);border-radius:8px;background:transparent;padding:0;cursor:pointer;overflow:hidden}
+.cell:hover{border-color:var(--acc)}
+.cell.want{border:3px solid var(--want)}.cell.own{border:3px solid var(--own)}
+.cell img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cell .n{position:absolute;top:3px;left:5px;font-size:.65rem;color:var(--mute);text-shadow:0 0 3px var(--sleeve)}
+.cell.want img{opacity:.55}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--surf);color:var(--ink);padding:16px;width:min(96vw,860px);max-height:92vh}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+dialog h3{margin:0 0 10px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.row input[type=search]{flex:1 1 200px;min-width:0}
+#results{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;max-height:56vh;overflow:auto;padding:2px}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px;cursor:pointer;text-align:center;font-size:.72rem}
+.card:hover{border-color:var(--acc)}
+.card img{width:100%;aspect-ratio:63/88;object-fit:contain;background:var(--line);border-radius:4px}
+.card b{display:block;margin-top:4px}
+.card span{color:var(--mute)}
+#msg{color:var(--mute);font-size:.9rem;margin:6px 0}
+textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;justify-content:flex-end}
+#toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;display:none;max-width:90vw}
+</style>
+</head>
+<body>
+<header>
+  <input id="title" aria-label="Nom du binder" value="Mon binder">
+  <div class="stats" id="stats"></div>
+</header>
+<div class="bar">
+  <button class="btn" id="prev">‹ Précédent</button>
+  <span id="pos"></span>
+  <button class="btn" id="next">Suivant ›</button>
+  <input type="number" id="go" min="1" placeholder="Page" aria-label="Aller à la page">
+  <button class="btn" id="goB">Aller</button>
+  <label>Pages <input type="number" id="np" min="2" max="2000"></label>
+  <button class="btn main" id="sync">Sauvegarde</button>
+</div>
+<main class="binder" id="binder"></main>
+
+<dialog id="pk">
+  <h3 id="pkT">Choisir une carte</h3>
+  <div class="row">
+    <input type="search" id="q" placeholder="Nom du Pokémon (Pikachu, Dracaufeu…)" aria-label="Nom du Pokémon">
+    <select id="lg" aria-label="Langue des cartes"><option value="fr">Cartes FR</option><option value="en">Cartes EN</option><option value="ja">Cartes JP</option></select>
+    <button class="btn main" id="qB">Chercher</button>
+  </div>
+  <div class="row">
+    <select id="fSt" aria-label="Statut"><option value="own">Possédée</option><option value="want">Recherchée</option></select>
+    <button class="btn" id="pkDel">Vider l’emplacement</button>
+    <button class="btn" id="pkClose">Fermer</button>
+  </div>
+  <div id="msg">Tape un nom et lance la recherche : toutes les cartes de ce Pokémon s’affichent, classées par extension.</div>
+  <div id="results"></div>
+  <div class="acts"><button class="btn" id="more" style="display:none">Voir plus de cartes</button></div>
+</dialog>
+
+<dialog id="sy">
+  <h3>Sauvegarde du binder</h3>
+  <textarea id="sTxt" rows="9"></textarea>
+  <div class="acts">
+    <button class="btn" id="sCopy">Copier</button>
+    <button class="btn" id="sImp">Importer</button>
+    <button class="btn main" id="sClose">Fermer</button>
+  </div>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script>
+(function(){
+var K="binder-pokemon-cartes-v1",API="https://api.tcgdex.net/v2/";
+var st={name:"Mon binder",pages:360,slots:{}};
+try{var raw=localStorage.getItem(K);if(raw){var o=JSON.parse(raw);if(o&&o.slots)st=o}}catch(e){}
+var pos=0,cur=-1,term="",list=[],shown=0,sets={},tt=null;
+var $=function(i){return document.getElementById(i)};
+function toast(m){var e=$("toast");e.textContent=m;e.style.display="block";clearTimeout(tt);tt=setTimeout(function(){e.style.display="none"},3500)}
+function save(){try{localStorage.setItem(K,JSON.stringify(st))}catch(e){toast("Impossible d’enregistrer dans le navigateur : copie ta sauvegarde.")}}
+function esc(s){return String(s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function stats(){var f=0,w=0,p=0;for(var k in st.slots){var s=st.slots[k];f++;if(s.st==="own")p++;if(s.st==="want")w++}
+$("stats").textContent=f+" / "+st.pages*9+" emplacements remplis · "+p+" possédées · "+w+" recherchées"}
+function pageHtml(p){if(p>=st.pages)return"";var h='<section class="page"><h2>Page '+(p+1)+'</h2><div class="grid">';
+for(var i=0;i<9;i++){var g=p*9+i,s=st.slots[g];
+h+='<button class="cell'+(s&&s.st?" "+s.st:"")+'" data-g="'+g+'" aria-label="Page '+(p+1)+', emplacement '+(i+1)+(s?" : "+esc(s.n):", vide")+'">'+(s?'<img alt="'+esc(s.n)+'" src="'+esc(s.img)+'" title="'+esc(s.n+" · "+s.s+" · "+s.num)+'">':"")+'<span class="n">'+(i+1)+'</span></button>'}
+return h+"</div></section>"}
+function render(){$("binder").innerHTML=pageHtml(pos)+pageHtml(pos+1);
+$("pos").textContent="Pages "+(pos+1)+(pos+1<st.pages?"–"+(pos+2):"")+" sur "+st.pages;
+$("prev").disabled=pos<=0;$("next").disabled=pos+2>=st.pages;$("np").value=st.pages;$("title").value=st.name;stats()}
+$("binder").addEventListener("click",function(e){var b=e.target.closest(".cell");if(!b)return;
+cur=+b.dataset.g;var s=st.slots[cur];$("pkT").textContent="Page "+(Math.floor(cur/9)+1)+", emplacement "+(cur%9+1);
+$("fSt").value=(s&&s.st)||"own";$("pkDel").style.display=s?"":"none";$("pk").showModal();$("q").focus()});
+$("pkClose").onclick=function(){$("pk").close()};
+$("pkDel").onclick=function(){delete st.slots[cur];save();render();$("pk").close()};
+$("fSt").onchange=function(){var s=st.slots[cur];if(s){s.st=this.value;save();render()}};
+function ask(url,ms){var c=new AbortController(),t=setTimeout(function(){c.abort()},ms);
+return fetch(url,{signal:c.signal}).then(function(r){clearTimeout(t);if(!r.ok)throw new Error("HTTP "+r.status);return r.json()},function(e){clearTimeout(t);throw e})}
+function askR(url){return ask(url,25000).catch(function(){return ask(url,25000)})}
+function getSets(l){if(sets[l])return Promise.resolve(sets[l]);
+return askR(API+l+"/sets").then(function(a){var n={},o={};a.forEach(function(x,i){n[x.id]=x.name;o[x.id]=i});sets[l]={n:n,o:o};return sets[l]}).catch(function(){return{n:{},o:{}}})}
+function more(){var h="";
+list.slice(shown,shown+48).forEach(function(c){h+='<div class="card" tabindex="0" role="button" data-id="'+esc(c.id)+'" data-n="'+esc(c.n)+'" data-s="'+esc(c.s)+'" data-num="'+esc(c.num)+'" data-img="'+esc(c.img)+'"><img loading="lazy" alt="'+esc(c.n)+'" src="'+esc(c.img)+'"><b>'+esc(c.n)+'</b><span>'+esc(c.s)+"<br>n° "+esc(c.num)+"</span></div>"});
+shown=Math.min(shown+48,list.length);$("results").insertAdjacentHTML("beforeend",h);
+$("msg").textContent=shown+" carte"+(shown>1?"s":"")+" affichée"+(shown>1?"s":"")+" sur "+list.length+" pour « "+term+" ». Clique sur une carte pour la placer.";
+$("more").style.display=shown<list.length?"":"none"}
+function fail(e){var m;
+if(e&&e.name==="AbortError")m="Le service des cartes met trop de temps à répondre (il est souvent surchargé). Réessaie dans quelques minutes.";
+else if(e&&/^HTTP/.test(e.message))m="Le service des cartes a renvoyé une erreur ("+e.message+"). Réessaie dans quelques minutes.";
+else m="Connexion impossible au service des cartes. Si tu as ouvert ce fichier depuis l’aperçu de l’application Claude, ouvre-le plutôt dans Chrome ou Safari.";
+$("msg").textContent=m;if($("results").children.length)$("more").style.display=""}
+function search(){term=$("q").value.trim();if(!term)return;var l=$("lg").value;
+$("results").innerHTML="";$("more").style.display="none";$("msg").textContent="Recherche en cours…";
+Promise.all([askR(API+l+"/cards?name="+encodeURIComponent(term)),getSets(l)]).then(function(r){var S=r[1];
+list=r[0].filter(function(c){return c.image}).map(function(c){var sid=c.id.slice(0,c.id.length-String(c.localId).length-1);
+return{id:c.id,n:c.name,s:S.n[sid]||sid,num:String(c.localId),img:c.image+"/low.webp",o:S.o[sid]===undefined?9999:S.o[sid]}});
+list.sort(function(a,b){return b.o-a.o});shown=0;
+if(!list.length){$("msg").textContent="Aucune carte trouvée pour « "+term+" ». Vérifie l’orthographe ou change la langue des cartes.";return}
+more()}).catch(fail)}
+$("qB").onclick=function(){search()};
+$("q").onkeydown=function(e){if(e.key==="Enter")search()};
+$("more").onclick=more;
+function pick(el){var c=el.closest(".card");if(!c)return;
+st.slots[cur]={id:c.dataset.id,n:c.dataset.n,s:c.dataset.s,num:c.dataset.num,img:c.dataset.img,st:$("fSt").value};
+save();render();$("pk").close();toast(c.dataset.n+" ajoutée")}
+$("results").addEventListener("click",function(e){pick(e.target)});
+$("results").addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();pick(e.target)}});
+$("prev").onclick=function(){pos=Math.max(0,pos-2);render()};
+$("next").onclick=function(){if(pos+2<st.pages){pos+=2;render()}};
+function goPage(p){p=Math.max(1,Math.min(st.pages,p||1));pos=Math.floor((p-1)/2)*2;render()}
+$("goB").onclick=function(){goPage(+$("go").value)};
+$("go").onkeydown=function(e){if(e.key==="Enter")goPage(+this.value)};
+$("np").onchange=function(){var n=Math.max(2,Math.min(2000,+this.value||360));st.pages=n;if(pos>=n)pos=0;save();render()};
+$("title").oninput=function(){st.name=this.value;save()};
+$("sync").onclick=function(){$("sTxt").value=JSON.stringify(st);$("sy").showModal()};
+$("sClose").onclick=function(){$("sy").close()};
+$("sCopy").onclick=function(){var e=$("sTxt");e.select();try{document.execCommand("copy");toast("Copié")}catch(x){}};
+$("sImp").onclick=function(){try{var o=JSON.parse($("sTxt").value);if(!o||typeof o.slots!=="object")throw 0;st={name:o.name||"Mon binder",pages:o.pages||360,slots:o.slots};pos=0;save();render();$("sy").close();toast("Binder importé")}catch(e){toast("Sauvegarde invalide : colle le texte complet.")}};
+render();
+})();
+</script>
+</body>
+</html>
