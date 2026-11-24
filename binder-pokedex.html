@@ -56,17 +56,17 @@ button:active{background:var(--edge)}
 
 <div id="modal">
   <div id="mh"><b id="mt"></b><button id="rm">Vider</button><button id="close">Fermer</button></div>
-  <input id="cf" placeholder="Filtrer (extension, rareté…)" style="margin-bottom:8px;flex:none">
+  <input id="cf" placeholder="Filtrer (extension, nom…)" style="margin-bottom:8px;flex:none">
   <div id="list"></div>
 </div>
 
 <script>
-var N=1025,PER=9,KEY="binderPokedex",NKEY="binderPokedexNamesFr";
+var N=1025,PER=9,KEY="binderPokedex",NKEY="binderPokedexNamesFr2";
 var names=[],saved={},page=0,cur=0,cards=[];
 function lsGet(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 saved=lsGet(KEY,{});names=lsGet(NKEY,[]);
-function nm(i){return names[i-1]||("Pokémon "+i)}
+function nm(i){return names[i-1]||("#"+i)}
 function ids(){var f=document.getElementById("f").value,a=[];
   for(var i=1;i<=N;i++){var s=!!saved[i];if(f==="all"||(f==="full"&&s)||(f==="empty"&&!s))a.push(i)}
   return a}
@@ -101,19 +101,24 @@ function openModal(i){
   document.getElementById("modal").className="on";
   var l=document.getElementById("list");l.innerHTML='<div id="msg">Chargement des cartes…</div>';
   cards=[];
-  fetch("https://api.pokemontcg.io/v2/cards?q=nationalPokedexNumbers:"+i+"&orderBy=-set.releaseDate&pageSize=250&select=id,name,images,set,rarity")
-    .then(function(r){if(!r.ok)throw 0;return r.json()})
-    .then(function(d){if(cur!==i)return;cards=d.data||[];showCards()})
-    .catch(function(){document.getElementById("list").innerHTML='<div id="msg">Impossible de charger les cartes. Réessaie dans un instant.</div>'});
+  function ok(r){if(!r.ok)throw 0;return r.json()}
+  function tc(lang){return fetch("https://api.tcgdex.net/v2/"+lang+"/cards?dexId="+i).then(ok).then(function(d){
+    if(!Array.isArray(d)||!d.length)throw 0;
+    return d.filter(function(c){return c.image}).map(function(c){return {img:c.image+"/low.webp",info:c.id.split("-")[0]+" · n°"+c.localId,key:c.id+" "+c.name}})})}
+  tc("fr").catch(function(){return tc("en")}).catch(function(){
+    return fetch("https://api.pokemontcg.io/v2/cards?q=nationalPokedexNumbers:"+i+"&pageSize=250&select=id,name,images,set,rarity").then(ok).then(function(d){
+      return d.data.map(function(c){var s=c.set?c.set.name:"";return {img:c.images.small,info:s+(c.rarity?" · "+c.rarity:""),key:s+" "+(c.rarity||"")+" "+c.name}})})})
+  .then(function(r){if(cur!==i)return;cards=r;showCards()})
+  .catch(function(){if(cur===i)document.getElementById("list").innerHTML='<div id="msg">Impossible de charger les cartes. Vérifie ta connexion et réessaie.</div>'});
 }
 function showCards(){
   var q=document.getElementById("cf").value.trim().toLowerCase(),l=document.getElementById("list");l.innerHTML="";
-  var r=cards.filter(function(c){return !q||((c.set&&c.set.name||"")+" "+(c.rarity||"")+" "+c.name).toLowerCase().indexOf(q)>=0});
+  var r=cards.filter(function(c){return !q||c.key.toLowerCase().indexOf(q)>=0});
   if(!r.length){l.innerHTML='<div id="msg">Aucune carte trouvée.</div>';return}
   r.forEach(function(c){
     var b=document.createElement("button");b.className="opt";
-    b.innerHTML='<img loading="lazy" src="'+c.images.small+'" alt=""><span>'+(c.set?c.set.name:"")+(c.rarity?"<br>"+c.rarity:"")+'</span>';
-    b.onclick=function(){saved[cur]=c.images.small;lsSet(KEY,saved);closeModal();render()};
+    b.innerHTML='<img loading="lazy" src="'+c.img+'" alt=""><span>'+c.info+'</span>';
+    b.onclick=function(){saved[cur]=c.img;lsSet(KEY,saved);closeModal();render()};
     l.appendChild(b)});
 }
 function closeModal(){document.getElementById("modal").className=""}
@@ -121,21 +126,16 @@ document.getElementById("cf").oninput=showCards;
 document.getElementById("close").onclick=closeModal;
 document.getElementById("rm").onclick=function(){delete saved[cur];lsSet(KEY,saved);closeModal();render()};
 render();
-if(names.length<N){
-  fetch("https://beta.pokeapi.co/graphql/v1beta",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({query:"{pokemon_v2_pokemonspeciesname(where:{language_id:{_eq:5}},order_by:{pokemon_species_id:asc}){pokemon_species_id name}}"})})
-    .then(function(r){if(!r.ok)throw 0;return r.json()})
-    .then(function(d){
-      var rows=d.data.pokemon_v2_pokemonspeciesname,a=[];
-      rows.forEach(function(x){a[x.pokemon_species_id-1]=x.name});
-      if(a.length<N)throw 0;
-      names=a;lsSet(NKEY,names);render()})
-    .catch(function(){
-      fetch("https://pokeapi.co/api/v2/pokemon?limit="+N).then(function(r){return r.json()}).then(function(d){
-        names=d.results.map(function(p){var n=p.name.replace(/-/g," ");return n.charAt(0).toUpperCase()+n.slice(1)});
-        render()}).catch(function(){});
-    });
-}
+(function(){
+  var q=[],fin=0,done=0;
+  for(var i=1;i<=N;i++)if(!names[i-1])q.push(i);
+  function next(){var i=q.shift();
+    if(!i){if(++fin===6){lsSet(NKEY,names);render()}return}
+    fetch("https://pokeapi.co/api/v2/pokemon-species/"+i).then(function(r){return r.json()}).then(function(d){
+      var f=d.names.filter(function(x){return x.language.name==="fr"})[0];if(f)names[i-1]=f.name}).catch(function(){})
+    .then(function(){done++;if(done%30===0){lsSet(NKEY,names);render()}next()})}
+  for(var k=0;k<6;k++)next();
+})();
 </script>
 </body>
 </html>
