@@ -46,7 +46,7 @@ button:active{background:var(--edge)}
 </style>
 </head>
 <body>
-<header><h1>Binder Pokédex</h1><span id="count"></span></header>
+<header><h1>Binder Pokédex <small style="font-weight:400;font-size:11px;color:var(--mute)">version 7</small></h1><span id="count"></span></header>
 <div class="bar">
   <input id="q" placeholder="Nom ou numéro (ex. Pikachu, 25)" enterkeyhint="search">
   <select id="f"><option value="all">Tous</option><option value="empty">Vides</option><option value="full">Remplis</option></select>
@@ -102,13 +102,24 @@ function openModal(i){
   var l=document.getElementById("list");l.innerHTML='<div id="msg">Chargement des cartes…</div>';
   cards=[];
   function ok(r){if(!r.ok)throw 0;return r.json()}
-  function tc(lang){return fetch("https://api.tcgdex.net/v2/"+lang+"/cards?dexId="+i).then(ok).then(function(d){
-    if(!Array.isArray(d)||!d.length)throw 0;
-    return d.filter(function(c){return c.image}).map(function(c){return {img:c.image+"/low.webp",info:c.id.split("-")[0]+" · n°"+c.localId,key:c.id+" "+c.name}})})}
-  tc("fr").catch(function(){return tc("en")}).catch(function(){
+  var API="https://api.tcgdex.net/v2/";
+  function conv(d){return d.filter(function(c){return c.image&&!/^(A\d|B\d|P-A)/.test(c.id)}).map(function(c){return {id:c.id,img:c.image+"/low.webp",info:c.id.split("-")[0]+" · n°"+c.localId,key:c.id+" "+c.name}})}
+  function tc(lang){return fetch(API+lang+"/cards?dexId="+i).then(ok).then(function(d){if(!Array.isArray(d))throw 0;return conv(d)})}
+  function esc(t){return t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}
+  function nq(lang,n){if(!n||n.charAt(0)==="#")return Promise.resolve([]);
+    var re=new RegExp("(^|[^A-Za-z\u00C0-\u00FF0-9])"+esc(n)+"($|[^A-Za-z\u00C0-\u00FF0-9])","i");
+    return fetch(API+lang+"/cards?name="+encodeURIComponent(n)).then(ok).then(function(d){if(!Array.isArray(d))throw 0;return conv(d.filter(function(c){return re.test(c.name)}))})}
+  var en=fetch("https://pokeapi.co/api/v2/pokemon-species/"+i).then(ok).then(function(d){var e=d.names.filter(function(x){return x.language.name==="en"})[0];return e?e.name:""}).catch(function(){return ""});
+  function z(p){return p.catch(function(){return []})}
+  Promise.all([z(tc("fr")),z(tc("en")),en.then(function(n){return z(nq("en",n))}),z(nq("fr",nm(i)))]).then(function(x){
+    var o=[],idx={};
+    function add(l,over){l.forEach(function(c){if(c.id in idx){if(over)o[idx[c.id]]=c}else{idx[c.id]=o.length;o.push(c)}})}
+    add(x[1],0);add(x[2],0);add(x[0],1);add(x[3],1);
+    if(!o.length)throw 0;
+    return o}).catch(function(){
     return fetch("https://api.pokemontcg.io/v2/cards?q=nationalPokedexNumbers:"+i+"&pageSize=250&select=id,name,images,set,rarity").then(ok).then(function(d){
       return d.data.map(function(c){var s=c.set?c.set.name:"";return {img:c.images.small,info:s+(c.rarity?" · "+c.rarity:""),key:s+" "+(c.rarity||"")+" "+c.name}})})})
-  .then(function(r){if(cur!==i)return;cards=r;showCards()})
+  .then(function(r){if(cur!==i)return;cards=r;document.getElementById("mt").textContent="#"+i+" "+nm(i)+" · "+r.length+" cartes";showCards()})
   .catch(function(){if(cur===i)document.getElementById("list").innerHTML='<div id="msg">Impossible de charger les cartes. Vérifie ta connexion et réessaie.</div>'});
 }
 function showCards(){
