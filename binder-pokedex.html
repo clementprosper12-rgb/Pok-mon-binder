@@ -55,12 +55,24 @@ button:active{background:var(--edge)}
 .rb{display:flex;gap:8px;margin-bottom:8px}
 .rb button{flex:1}
 #rclose{width:100%}
+.tabs{display:flex;gap:6px;margin-bottom:8px}
+.tabs button{flex:1}
+.tabs .on{border-color:var(--gold);color:var(--gold)}
+#viewP{display:none}
+.reg{display:block;width:100%;text-align:left;margin-bottom:8px;padding:10px 12px}
+.reg .rt{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;margin-bottom:6px}
+.reg small{color:var(--mute);font-size:12px}
+.reg .rbar{height:8px;background:#0f1722;border-radius:4px;overflow:hidden}
+.reg .rbar i{display:block;height:100%;background:var(--gold)}
+.reg.done .rbar i{background:#6fcf97}
 #msg{grid-column:1/-1;text-align:center;color:var(--mute);padding:30px 0}
 </style>
 </head>
 <body>
-<header><h1>Binder Pokédex <small style="font-weight:400;font-size:11px;color:var(--mute)">version 8</small></h1><span id="count"></span></header>
+<header><h1>Binder Pokédex <small style="font-weight:400;font-size:11px;color:var(--mute)">version 10</small></h1><span id="count"></span></header>
 <div id="prog"><div id="progf"></div></div>
+<div class="tabs"><button id="tB" class="on">Binder</button><button id="tP">Progression</button></div>
+<div id="viewB">
 <div class="bar">
   <input id="q" placeholder="Nom ou numéro (ex. Pikachu, 25)" enterkeyhint="search">
   <select id="f"><option value="all">Tous</option><option value="empty">Vides</option><option value="full">Remplis</option></select>
@@ -69,6 +81,8 @@ button:active{background:var(--edge)}
 <button id="tgt"></button>
 <div id="grid"></div>
 <div class="nav"><button id="prev">Précédent</button><span id="pg"></span><button id="next">Suivant</button></div>
+</div>
+<div id="viewP"></div>
 
 <div id="roul"><div id="rbox"><img id="rimg" alt=""><div id="rnum"></div><div id="rnm"></div>
   <div class="rb"><button id="rjump">Voir la case</button><button id="rre">Relancer</button></div>
@@ -83,6 +97,7 @@ button:active{background:var(--edge)}
 <script>
 var N=1025,PER=9,KEY="binderPokedex",NKEY="binderPokedexNamesFr2";
 var TKEY="binderPokedexTarget";
+var REG=[["Kanto",1,151],["Johto",152,251],["Hoenn",252,386],["Sinnoh",387,493],["Unys",494,649],["Kalos",650,721],["Alola",722,809],["Galar",810,898],["Hisui",899,905],["Paldea",906,1025]];
 var names=[],saved={},page=0,cur=0,cards=[],target=0,spinning=false;
 function lsGet(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
@@ -108,6 +123,7 @@ function render(){
   if(target&&saved[target]){target=0;lsSet(TKEY,0)}
   var tb=document.getElementById("tgt");
   if(target){tb.className="on";tb.textContent="À trouver : #"+target+" "+nm(target)+" (touche pour voir la case)"}else tb.className="";
+  renderP();
 }
 document.getElementById("prev").onclick=function(){page--;render();window.scrollTo(0,0)};
 document.getElementById("next").onclick=function(){page++;render();window.scrollTo(0,0)};
@@ -143,6 +159,24 @@ document.getElementById("rre").onclick=spin;
 document.getElementById("rjump").onclick=function(){document.getElementById("roul").className="";if(target)goTo(target)};
 document.getElementById("rclose").onclick=function(){if(!spinning)document.getElementById("roul").className=""};
 document.getElementById("tgt").onclick=function(){if(target)goTo(target)};
+function renderP(){
+  var v=document.getElementById("viewP");v.innerHTML="";
+  REG.forEach(function(r){
+    var tot=r[2]-r[1]+1,c=0;
+    for(var i=r[1];i<=r[2];i++)if(saved[i])c++;
+    var b=document.createElement("button");b.className="reg"+(c===tot?" done":"");
+    b.innerHTML='<div class="rt"><span>'+r[0]+' <small>#'+r[1]+' à #'+r[2]+'</small></span><span>'+c+' / '+tot+' · '+Math.round(c/tot*100)+'%</span></div><div class="rbar"><i style="width:'+(c/tot*100)+'%"></i></div>';
+    b.onclick=function(){showTab("B");goTo(r[1])};
+    v.appendChild(b)});
+}
+function showTab(t){
+  document.getElementById("viewB").style.display=t==="B"?"":"none";
+  document.getElementById("viewP").style.display=t==="P"?"block":"none";
+  document.getElementById("tB").className=t==="B"?"on":"";
+  document.getElementById("tP").className=t==="P"?"on":"";
+  window.scrollTo(0,0)}
+document.getElementById("tB").onclick=function(){showTab("B")};
+document.getElementById("tP").onclick=function(){showTab("P")};
 function openModal(i){
   cur=i;document.getElementById("mt").textContent="#"+i+" "+nm(i);
   document.getElementById("rm").style.display=saved[i]?"":"none";
@@ -151,8 +185,10 @@ function openModal(i){
   var l=document.getElementById("list");l.innerHTML='<div id="msg">Chargement des cartes…</div>';
   cards=[];
   function ok(r){if(!r.ok)throw 0;return r.json()}
+  function nk(id){var j=id.lastIndexOf("-");if(j<0)return id.toLowerCase();
+    return id.slice(0,j).toLowerCase().replace(/(\d)pt(\d)/g,"$1.$2").replace(/([a-z])0+(\d)/g,"$1$2")+"-"+id.slice(j+1).toLowerCase().replace(/^0+(?=\d)/,"")}
   var API="https://api.tcgdex.net/v2/";
-  function conv(d){return d.filter(function(c){return c.image&&!/^(A\d|B\d|P-A)/.test(c.id)}).map(function(c){return {id:c.id,img:c.image+"/low.webp",info:c.id.split("-")[0]+" · n°"+c.localId,key:c.id+" "+c.name}})}
+  function conv(d){return d.filter(function(c){return c.image&&!/^(A\d|B\d|P-A)/.test(c.id)}).map(function(c){return {id:c.id,k:nk(c.id),img:c.image+"/low.webp",info:c.id.split("-")[0]+" · n°"+c.localId,key:c.id+" "+c.name}})}
   function tc(lang){return fetch(API+lang+"/cards?dexId="+i).then(ok).then(function(d){if(!Array.isArray(d))throw 0;return conv(d)})}
   function esc(t){return t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}
   function nq(lang,n){if(!n||n.charAt(0)==="#")return Promise.resolve([]);
@@ -160,16 +196,21 @@ function openModal(i){
     return fetch(API+lang+"/cards?name="+encodeURIComponent(n)).then(ok).then(function(d){if(!Array.isArray(d))throw 0;return conv(d.filter(function(c){return re.test(c.name)}))})}
   var en=fetch("https://pokeapi.co/api/v2/pokemon-species/"+i).then(ok).then(function(d){var e=d.names.filter(function(x){return x.language.name==="en"})[0];return e?e.name:""}).catch(function(){return ""});
   function z(p){return p.catch(function(){return []})}
-  Promise.all([z(tc("fr")),z(tc("en")),en.then(function(n){return z(nq("en",n))}),z(nq("fr",nm(i)))]).then(function(x){
+  var base=[],extra=[];
+  function build(){var o=[],seen={};base.concat(extra).forEach(function(c){if(!seen[c.k]){seen[c.k]=1;o.push(c)}});return o}
+  function push(){if(cur!==i)return;cards=build();document.getElementById("mt").textContent="#"+i+" "+nm(i)+" · "+cards.length+" cartes";showCards()}
+  function pt(pg){return fetch("https://api.pokemontcg.io/v2/cards?q=nationalPokedexNumbers:"+i+"&pageSize=250&page="+pg+"&select=id,name,images,set,rarity,number").then(ok)}
+  function ptAll(){return pt(1).then(function(d){var a=d.data||[];
+    if(d.totalCount>250)return pt(2).then(function(e){return a.concat(e.data||[])}).catch(function(){return a});return a}).then(function(a){
+    return a.filter(function(c){return c.images&&c.images.small}).map(function(c){var st=c.set?c.set.name:"";
+      return {id:c.id,k:nk(c.id),img:c.images.small,info:st+" · "+c.number+(c.rarity?" · "+c.rarity:""),key:st+" "+c.number+" "+(c.rarity||"")+" "+c.name}})})}
+  var p1=Promise.all([z(tc("fr")),z(tc("en")),en.then(function(n){return z(nq("en",n))}),z(nq("fr",nm(i)))]).then(function(x){
     var o=[],idx={};
-    function add(l,over){l.forEach(function(c){if(c.id in idx){if(over)o[idx[c.id]]=c}else{idx[c.id]=o.length;o.push(c)}})}
+    function add(l,over){l.forEach(function(c){if(c.k in idx){if(over)o[idx[c.k]]=c}else{idx[c.k]=o.length;o.push(c)}})}
     add(x[1],0);add(x[2],0);add(x[0],1);add(x[3],1);
-    if(!o.length)throw 0;
-    return o}).catch(function(){
-    return fetch("https://api.pokemontcg.io/v2/cards?q=nationalPokedexNumbers:"+i+"&pageSize=250&select=id,name,images,set,rarity").then(ok).then(function(d){
-      return d.data.map(function(c){var s=c.set?c.set.name:"";return {img:c.images.small,info:s+(c.rarity?" · "+c.rarity:""),key:s+" "+(c.rarity||"")+" "+c.name}})})})
-  .then(function(r){if(cur!==i)return;cards=r;document.getElementById("mt").textContent="#"+i+" "+nm(i)+" · "+r.length+" cartes";showCards()})
-  .catch(function(){if(cur===i)document.getElementById("list").innerHTML='<div id="msg">Impossible de charger les cartes. Vérifie ta connexion et réessaie.</div>'});
+    base=o;if(o.length)push()}).catch(function(){});
+  var p2=ptAll().then(function(a){extra=a;if(a.length)push()}).catch(function(){});
+  Promise.all([p1,p2]).then(function(){if(cur===i&&!base.length&&!extra.length)document.getElementById("list").innerHTML='<div id="msg">Aucune carte trouvée, ou chargement impossible. Réessaie dans un instant.</div>'});
 }
 function showCards(){
   var q=document.getElementById("cf").value.trim().toLowerCase(),l=document.getElementById("list");l.innerHTML="";
