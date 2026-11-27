@@ -69,7 +69,7 @@ button:active{background:var(--edge)}
 </style>
 </head>
 <body>
-<header><h1>Binder Pokédex <small style="font-weight:400;font-size:11px;color:var(--mute)">version 10</small></h1><span id="count"></span></header>
+<header><h1>Binder Pokédex <small style="font-weight:400;font-size:11px;color:var(--mute)">version 11</small></h1><span id="count"></span></header>
 <div id="prog"><div id="progf"></div></div>
 <div class="tabs"><button id="tB" class="on">Binder</button><button id="tP">Progression</button></div>
 <div id="viewB">
@@ -88,8 +88,9 @@ button:active{background:var(--edge)}
   <div class="rb"><button id="rjump">Voir la case</button><button id="rre">Relancer</button></div>
   <button id="rclose">Fermer</button></div></div>
 
+<input type="file" id="pf" accept="image/*" style="display:none">
 <div id="modal">
-  <div id="mh"><b id="mt"></b><button id="rm">Vider</button><button id="close">Fermer</button></div>
+  <div id="mh"><b id="mt"></b><button id="photo">Ma photo</button><button id="rm">Vider</button><button id="close">Fermer</button></div>
   <input id="cf" placeholder="Filtrer (extension, nom…)" style="margin-bottom:8px;flex:none">
   <div id="list"></div>
 </div>
@@ -113,7 +114,7 @@ function render(){
   a.slice(page*PER,page*PER+PER).forEach(function(i){
     var b=document.createElement("button");b.className="slot"+(saved[i]?" full":"");
     var h='<span class="num">#'+i+'</span>';
-    if(saved[i])h+='<img class="card" loading="lazy" src="'+saved[i]+'" alt="'+nm(i)+'">';
+    if(saved[i])h+='<img class="card" loading="lazy" src="'+src(i)+'" alt="'+nm(i)+'">';
     else h+='<img class="spr" loading="lazy" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/'+i+'.png" alt=""><span class="lab">'+nm(i)+'</span>';
     b.innerHTML=h;b.onclick=function(){openModal(i)};g.appendChild(b)});
   document.getElementById("pg").textContent="Page "+(page+1)+" / "+pages;
@@ -135,6 +136,25 @@ document.getElementById("q").onchange=function(){
     if(!t)for(var j=1;j<=N;j++){if(nm(j).toLowerCase().indexOf(v)>=0){t=j;break}}}
   if(!t)return;
   document.getElementById("f").value="all";page=Math.floor((t-1)/PER);render();window.scrollTo(0,0);
+};
+var photos={},db=null;
+function src(i){var v=saved[i];if(v&&v.indexOf("photo:")===0)return photos[i]||"";return v}
+function idbOpen(cb){try{var r=indexedDB.open("binderPokedexPhotos",1);r.onupgradeneeded=function(){r.result.createObjectStore("p")};r.onsuccess=function(){db=r.result;cb()};r.onerror=function(){cb()}}catch(e){cb()}}
+function idbLoadAll(cb){if(!db){cb();return}try{var q=db.transaction("p","readonly").objectStore("p").openCursor();q.onsuccess=function(){var c=q.result;if(c){photos[c.key]=c.value;c.continue()}else cb()};q.onerror=function(){cb()}}catch(e){cb()}}
+function idbPut(k,v,ok,ko){if(!db){ko();return}try{var tx=db.transaction("p","readwrite");tx.objectStore("p").put(v,k);tx.oncomplete=ok;tx.onerror=ko;tx.onabort=ko}catch(e){ko()}}
+function idbDel(k){if(!db)return;try{db.transaction("p","readwrite").objectStore("p").delete(k)}catch(e){}}
+document.getElementById("photo").onclick=function(){document.getElementById("pf").click()};
+document.getElementById("pf").onchange=function(){
+  var f=this.files&&this.files[0];this.value="";if(!f)return;var t=cur,im=new Image(),u=URL.createObjectURL(f);
+  im.onload=function(){
+    var w=im.naturalWidth,h=im.naturalHeight,sc=Math.min(1,520/Math.max(w,h)),cw=Math.round(w*sc),ch=Math.round(h*sc);
+    var cv=document.createElement("canvas");cv.width=cw;cv.height=ch;cv.getContext("2d").drawImage(im,0,0,cw,ch);
+    URL.revokeObjectURL(u);
+    var d=cv.toDataURL("image/jpeg",0.82);
+    idbPut(t,d,function(){photos[t]=d;saved[t]="photo:"+t;lsSet(KEY,saved);closeModal();render()},function(){alert("Impossible d'enregistrer la photo sur ce téléphone.")});
+  };
+  im.onerror=function(){alert("Photo illisible, essaie une autre image.")};
+  im.src=u;
 };
 function goTo(t){document.getElementById("f").value="all";page=Math.floor((t-1)/PER);render();window.scrollTo(0,0)}
 function pool(){var a=[];for(var i=1;i<=N;i++)if(!saved[i])a.push(i);return a}
@@ -219,14 +239,15 @@ function showCards(){
   r.forEach(function(c){
     var b=document.createElement("button");b.className="opt";
     b.innerHTML='<img loading="lazy" src="'+c.img+'" alt=""><span>'+c.info+'</span>';
-    b.onclick=function(){saved[cur]=c.img;lsSet(KEY,saved);closeModal();render()};
+    b.onclick=function(){delete photos[cur];idbDel(cur);saved[cur]=c.img;lsSet(KEY,saved);closeModal();render()};
     l.appendChild(b)});
 }
 function closeModal(){document.getElementById("modal").className=""}
 document.getElementById("cf").oninput=showCards;
 document.getElementById("close").onclick=closeModal;
-document.getElementById("rm").onclick=function(){delete saved[cur];lsSet(KEY,saved);closeModal();render()};
+document.getElementById("rm").onclick=function(){delete photos[cur];idbDel(cur);delete saved[cur];lsSet(KEY,saved);closeModal();render()};
 render();
+idbOpen(function(){idbLoadAll(render)});
 (function(){
   var q=[],fin=0,done=0;
   for(var i=1;i<=N;i++)if(!names[i-1])q.push(i);
